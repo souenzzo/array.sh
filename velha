@@ -1,0 +1,96 @@
+#!/usr/bin/env sh
+
+## Test environment for array.sh library
+## Works on:
+## bash4, bash3, dash, mksh, busybox sh
+## Don't work on zsh.
+
+. ./array.sh
+
+set -e ## Exit on any fail command
+set -u ## Exit on call undeclared variable
+# set -x ## Debug. Don't try at home!!!
+
+showGrid () {
+	echo "+---+---+---+"
+	echo "| $(array get 0 "$1") | $(array get 1 "$1") | $(array get 2 "$1") |"
+	echo "| $(array get 3 "$1") | $(array get 4 "$1") | $(array get 5 "$1") |"
+	echo "| $(array get 6 "$1") | $(array get 7 "$1") | $(array get 8 "$1") |"
+	echo "+---+---+---+"
+}
+
+playPos () {
+	POS="$1"
+	PLAYER="$2"
+	GRID="$3"
+	test "$(array get "$POS" "$GRID")" = "," || { echo "$GRID"; return 1; }
+	array def "$POS" "$PLAYER" "$GRID"
+	return 0
+}
+
+findWinner () {
+	GRID="$1"
+	WIN="$(array new "v-v-v-.-.-.-.-.-." ".-.-.-v-v-v-.-.-." \
+		".-.-.-.-.-.-v-v-v" "v-.-.-v-.-.-v-.-." ".-v-.-.-v-.-.-v-." \
+		".-.-v-.-.-v-.-.-v" ".-.-v-.-v-.-v-.-."	"v-.-.-.-v-.-.-.-v")"
+	GRIDDUMP="$(array show '-' "$GRID")"
+	for i in $(array index "$WIN"); do
+		WINPOS="$(array get "$i" "$WIN")"
+		echo "$GRIDDUMP" | tr 'X' 'v' | egrep -q "$WINPOS" && { echo X; return 0; }
+		echo "$GRIDDUMP" | tr 'O' 'v' | egrep -q "$WINPOS" && { echo O; return 0; }
+		## Fast BASHv4 version. Please help me to find something faster than tr/egrep
+		# [[ "${GRIDDUMP//X/v}" =~ $(array get "$i" "$WIN") ]] && { echo X; return 0; }
+		# [[ "${GRIDDUMP//O/v}" =~ $(array get "$i" "$WIN") ]] && { echo O; return 0; }
+	done
+	echo "$GRIDDUMP" | grep -q ',' && return 1
+	# [[ "$GRIDDUMP" =~ "," ]] && return 1 ## BASHv4
+	echo V; return 0
+}
+
+iaPlays () {
+	PLAYER="$1"
+	OPPONENT="$2"
+	GRID="$3"
+	INDEX="$(array index "$GRID")"
+	for cur in "$PLAYER" "$OPPONENT"; do ## First test if IA can win, then if OPPONENT can. 
+		for i in $INDEX; do ## Check if 'cur' can win ## zsh don't work here!
+			test "$(array get "$i" "$GRID")" = "," || continue ## Can't play here
+			jTABELA="$(playPos "$i" "$cur" "$GRID")"
+			test "$(findWinner "$jTABELA")" = "$cur" && { echo "$i"; return; }
+		done
+	done
+	while true; do ## Play anywhere
+		# i=$((RANDOM % 9)) ## BASHv4 Solution
+		i="$(shuf -i 0-8 -n1)" ## Need a better solution
+		test "$(array get "$i" "$GRID")" = "," && { echo "$i"; return; }
+	done
+}
+
+tictactoe () {
+	GRID="$(array new ',' ',' ',' ',' ',' ',' ',' ',' ',')"
+	PLAYERS="$(array new 'X' 'O')"
+	CURRENT=0
+	while ! WINNER="$(findWinner "$GRID")"; do
+		showGrid "$GRID"
+		PLAYER="$(array get "$CURRENT" "$PLAYERS")"
+		OPPONENT="$(array get "$(( CURRENT == 0 ))" "$PLAYERS")"
+		if test "$CURRENT" -eq "0"; then
+			echo "Vez do jogado $PLAYER: "
+			read -r POS
+		else
+			POS=$(iaPlays "$PLAYER" "$OPPONENT" "$GRID")
+			echo "Computador jogará na posição $POS"
+		fi
+		GRID="$(playPos "$POS" "$PLAYER" "$GRID")" || { echo "Invalid POS"; continue; }
+		CURRENT=$(( CURRENT == 0 ))
+	done
+	showGrid "$GRID"
+	if test "$WINNER" = "V"; then
+		echo "Deu velha!!"
+	else
+		echo "Parabéns! Jogado $WINNER venceu!!"
+	fi
+}
+
+tictactoe
+
